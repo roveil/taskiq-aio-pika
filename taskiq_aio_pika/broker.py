@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Iterable
 from datetime import timedelta
 from logging import getLogger
 from typing import Any, TypeVar
@@ -63,6 +63,7 @@ class AioPikaBroker(AsyncBroker):
         delayed_message_exchange: Exchange | None = None,
         label_for_routing: str = "queue_name",
         label_for_priority: str = "priority",
+        worker_queues_to_consume: Iterable[str] | None = None,
         **connection_kwargs: Any,
     ) -> None:
         """
@@ -86,6 +87,8 @@ class AioPikaBroker(AsyncBroker):
         :param label_for_priority: label name to use for message priority.
         :param connection_kwargs: additional keyword arguments,
             for connect_robust method of aio-pika.
+        :param worker_queues_to_consume: if provided, worker will only consume messages
+          from the specified queue names. By default, all task queues are consumed.
         """
         super().__init__(result_backend, task_id_generator)
 
@@ -98,6 +101,7 @@ class AioPikaBroker(AsyncBroker):
         self._task_queues_by_routing_key = {
             queue.queue_routing_key: queue for queue in self._task_queues
         }
+        self._worker_queues_to_consume = worker_queues_to_consume
 
         self._dead_letter_queue = dead_letter_queue or Queue(name="taskiq.dead_letter")
 
@@ -474,6 +478,8 @@ class AioPikaBroker(AsyncBroker):
             *[
                 body(queue, consumer_args)
                 for queue, consumer_args in queue_with_consumer_args_list
+                if self._worker_queues_to_consume is None
+                or queue.name in self._worker_queues_to_consume
             ],
         )
 
