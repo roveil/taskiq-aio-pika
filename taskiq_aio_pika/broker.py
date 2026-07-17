@@ -303,9 +303,16 @@ class AioPikaBroker(AsyncBroker):
                     routing_key=queue.routing_key or queue.name,
                 )
             else:
-                # Declare delay queue with x-dead-letter-routing-key to queue
-                per_queue_arguments["x-dead-letter-exchange"] = self._exchange.name
-                per_queue_arguments["x-dead-letter-routing-key"] = (
+                # Declare delay queue with x-dead-letter-routing-key to queue.
+                # Use a separate dict so we don't mutate the arguments already
+                # passed to the main queue declaration above: aio-pika keeps a
+                # reference to that dict for robust-reconnect re-declaration, and
+                # mutating it would make the main queue re-declare with the delay
+                # queue's dead-letter args, causing a precondition_failed on
+                # reconnect.
+                delay_queue_arguments: FieldTable = per_queue_arguments.copy()
+                delay_queue_arguments["x-dead-letter-exchange"] = self._exchange.name
+                delay_queue_arguments["x-dead-letter-routing-key"] = (
                     queue.queue_routing_key
                 )
 
@@ -322,7 +329,7 @@ class AioPikaBroker(AsyncBroker):
                     exclusive=queue.exclusive,
                     passive=queue.passive,
                     auto_delete=queue.auto_delete,
-                    arguments=per_queue_arguments,
+                    arguments=delay_queue_arguments,
                     timeout=queue.timeout,
                 )
 
